@@ -1,0 +1,161 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Evaluación VentasMas</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <style>
+    body { background-color: #f0f0f0; padding: 20px; }
+    .options button { margin: 5px 0; }
+    .progress-container { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+<section class="section">
+  <div class="container">
+
+    <div id="startBox" class="box animate__animated animate__fadeInUp">
+      <h1 class="title has-text-centered">Bienvenido a la Evaluación de Conocimientos VentasMas</h1>
+      <p class="subtitle has-text-centered">Evalúa tus habilidades, descubre tu potencial</p>
+      <div class="field">
+        <label class="label">Número de Empleado</label>
+        <input class="input" type="text" id="employeeNumber" placeholder="Escribe tu número de empleado">
+      </div>
+      <div class="field">
+        <label class="label">Autoevaluación</label>
+        <div class="select">
+          <select id="selfAssessment">
+            <option value="" disabled selected>Selecciona</option>
+            <option value="1">Nada</option>
+            <option value="2">Poco</option>
+            <option value="3">Regular</option>
+            <option value="4">Mucho</option>
+            <option value="5">Soy un experto</option>
+          </select>
+        </div>
+      </div>
+      <button class="button is-primary" onclick="startQuiz()">Comenzar Evaluación</button>
+    </div>
+
+    <div id="quizBox" class="box animate__animated animate__fadeInUp" style="display:none;">
+      <div class="progress-container">
+        <progress class="progress is-success" value="0" max="100" id="progressBar"></progress>
+        <p id="progressText" class="has-text-centered"></p>
+      </div>
+      <h2 class="title is-5" id="questionTitle"></h2>
+      <div id="optionsContainer" class="buttons is-centered"></div>
+      <button class="button is-link" onclick="nextQuestion()">Siguiente</button>
+    </div>
+
+    <div id="resultBox" class="box animate__animated animate__fadeInUp" style="display:none;">
+      <h2 class="title is-4">¡Gracias! Evaluación completada.</h2>
+      <button class="button is-light" onclick="location.reload()">Reiniciar</button>
+    </div>
+
+  </div>
+</section>
+
+<script>
+let questions = [];
+let selectedQuestions = [];
+let currentQuestion = 0;
+let userAnswers = [];
+let correctAnswers = [];
+
+fetch('questions.json')
+  .then(response => response.json())
+  .then(data => { questions = data; });
+
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function startQuiz() {
+  const emp = document.getElementById('employeeNumber').value;
+  const self = document.getElementById('selfAssessment').value;
+  if (!emp || !self) {
+    alert('Por favor completa tus datos.');
+    return;
+  }
+  shuffleArray(questions);
+  selectedQuestions = questions.slice(0, 5);
+  document.getElementById('startBox').style.display = 'none';
+  document.getElementById('quizBox').style.display = 'block';
+  showQuestion();
+}
+
+function showQuestion() {
+  const q = selectedQuestions[currentQuestion];
+  document.getElementById('questionTitle').innerText = q.pregunta;
+  const container = document.getElementById('optionsContainer');
+  container.innerHTML = "";
+  let opts = [...q.opciones];
+  shuffleArray(opts);
+  opts.forEach(op => {
+    const btn = document.createElement('button');
+    btn.className = 'button is-fullwidth';
+    btn.innerText = op;
+    btn.onclick = () => {
+      [...container.children].forEach(b => b.classList.remove('is-primary'));
+      btn.classList.add('is-primary');
+      userAnswers[currentQuestion] = op;
+      correctAnswers[currentQuestion] = q.correcta;
+    };
+    container.appendChild(btn);
+  });
+  document.getElementById('progressBar').value = (currentQuestion / selectedQuestions.length) * 100;
+  document.getElementById('progressText').innerText = `Pregunta ${currentQuestion + 1} de ${selectedQuestions.length}`;
+}
+
+function nextQuestion() {
+  if (!userAnswers[currentQuestion]) {
+    alert('Selecciona una respuesta antes de continuar.');
+    return;
+  }
+  currentQuestion++;
+  if (currentQuestion < selectedQuestions.length) {
+    showQuestion();
+  } else {
+    document.getElementById('quizBox').style.display = 'none';
+    document.getElementById('resultBox').style.display = 'block';
+    enviarResultados();
+  }
+}
+
+function enviarResultados() {
+  const payload = {
+    empleado: document.getElementById('employeeNumber').value,
+    autoevaluacion: parseInt(document.getElementById('selfAssessment').value),
+    puntuacion: userAnswers.filter((r, i) => r === correctAnswers[i]).length,
+    diagnostico: '',
+    riesgo: '',
+    preguntas: selectedQuestions.map(q => q.pregunta),
+    respuestasUsuario: userAnswers,
+    respuestasCorrectas: correctAnswers
+  };
+
+  if (payload.autoevaluacion >= 4 && payload.puntuacion <= 2) {
+    payload.diagnostico = 'Riesgo alto de Dunning-Kruger';
+    payload.riesgo = 'ALTO';
+  } else if (payload.autoevaluacion <= 2 && payload.puntuacion >= 4) {
+    payload.diagnostico = 'Síndrome del impostor';
+    payload.riesgo = 'BAJO';
+  } else {
+    payload.diagnostico = 'Percepción adecuada';
+    payload.riesgo = 'MODERADO';
+  }
+
+  fetch('https://script.google.com/macros/s/AKfycbxAPOzqixWAuQQi_w6sd3Y6NCeUvv3xIwixDCmnlcU96SkQ1YKoxv1LqqCtg96XGOQ3KA/exec', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+</script>
+</body>
+</html>
